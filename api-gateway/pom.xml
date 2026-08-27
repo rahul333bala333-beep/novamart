@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.novamart</groupId>
+    <artifactId>novamart-platform</artifactId>
+    <version>1.0.0</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>api-gateway</artifactId>
+  <packaging>jar</packaging>
+  <name>Nova Mart API Gateway</name>
+  <description>
+    The single entry point for every client. Terminates CORS, verifies the access
+    token, strips spoofable identity headers, injects trusted ones, and routes to
+    the owning service.
+
+    This is a reactive (WebFlux) application, unlike the services behind it, which
+    are servlet based. A gateway spends nearly all its time waiting on the
+    network, so a non-blocking stack lets one instance hold far more concurrent
+    connections than a thread-per-request one. The services themselves do
+    blocking JDBC work, where the servlet model is the simpler fit.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+    </dependency>
+
+    <!-- Pulled in for JwtService only. common-lib marks its servlet dependencies
+         optional, so nothing from the servlet stack arrives here transitively. -->
+    <dependency>
+      <groupId>com.novamart</groupId>
+      <artifactId>common-lib</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>api-gateway</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

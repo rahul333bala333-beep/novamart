@@ -1,0 +1,12 @@
+# api-gateway - `local` profile.
+#
+# Routes to services on localhost. Start each service with its own `local`
+# profile, or use `docker compose up` for the whole stack.
+
+novamart:
+  jwt:
+    secret: novamart-local-development-signing-key-not-for-production
+
+logging:
+  level:
+    com.novamart: DEBUG

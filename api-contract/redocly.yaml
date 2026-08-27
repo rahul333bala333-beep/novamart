@@ -1,0 +1,33 @@
+# Lint configuration for the Nova Mart API contract.
+#
+# Run:  npx @redocly/cli lint api-contract/openapi.yaml
+#
+# Two recommended rules are deliberately relaxed. Both are recorded here rather
+# than silenced inline so the reasoning survives review.
+
+extends:
+  - recommended
+
+rules:
+  # The only server we publish is the local Docker Compose gateway. There is no
+  # hosted environment for this project, so a localhost URL is correct rather
+  # than a placeholder that needs replacing.
+  no-server-example.com: off
+
+  # GET /categories and GET /brands are unauthenticated reads that accept no
+  # parameters, so there is no request the caller can malform. Declaring a 400
+  # purely to satisfy the linter would document a response the service never
+  # returns, which is worse than the warning. Every operation that CAN fail with
+  # a 4xx does declare it.
+  operation-4xx-response: off
+
+  # Everything below is enforced.
+  operation-operationId: error
+  operation-summary: error
+  # Every operation carries a summary; a longer description is added only where
+  # the behaviour is non-obvious (sagas, compensations, simulated payments).
+  operation-description: off
+  no-unused-components: error
+  security-defined: error
+  no-invalid-media-type-examples: error
+  struct: error

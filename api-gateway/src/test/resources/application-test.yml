@@ -1,0 +1,24 @@
+# api-gateway test profile.
+#
+# The gateway refuses to start without a signing secret, which is the intended
+# behaviour, so the test context supplies one. Service URLs point at names that
+# never resolve: these tests assert routing decisions, not downstream calls.
+
+novamart:
+  jwt:
+    secret: gateway-test-signing-key-at-least-32-bytes!!
+    issuer: novamart
+  cors:
+    allowed-origins: http://localhost:3000
+  services:
+    auth-url: http://auth-service:8081
+    product-url: http://product-service:8082
+    cart-url: http://cart-service:8083
+    order-url: http://order-service:8084
+    payment-url: http://payment-service:8085
+    inventory-url: http://inventory-service:8086
+    notification-url: http://notification-service:8087
+
+logging:
+  level:
+    root: WARN

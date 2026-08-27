@@ -1,0 +1,2880 @@
+openapi: 3.0.3
+
+info:
+  title: Nova Mart Commerce API
+  version: 1.0.0
+  description: |
+    Public HTTP contract for the **Nova Mart** online shopping platform.
+
+    This document is the **source of truth**. It was authored *before* any service
+    implementation, and every backend endpoint and every frontend API client method
+    is derived from it. Changing behaviour means changing this file first.
+
+    ## Architecture
+
+    Clients never talk to a service directly. All traffic enters through the
+    **API Gateway** (`/api/v1/**`), which authenticates the caller, strips any
+    client-supplied identity headers, injects trusted ones, and routes to the
+    owning service.
+
+    | Path prefix                                   | Owning service       | Owns database     |
+    | --------------------------------------------- | -------------------- | ----------------- |
+    | `/auth`, `/users`                              | auth-service         | `auth_db`         |
+    | `/products`, `/categories`, `/brands`          | product-service      | `product_db`      |
+    | `/cart`                                        | cart-service         | `cart_db`         |
+    | `/orders`                                      | order-service        | `order_db`        |
+    | `/payments`                                    | payment-service      | `payment_db`      |
+    | `/inventory`                                   | inventory-service    | `inventory_db`    |
+    | `/notifications`                               | notification-service | `notification_db` |
+
+    No service reads another service's tables. Cross-service data is obtained only
+    through the HTTP contracts described here.
+
+    ## Response envelope
+
+    Every response - success or failure - uses a consistent envelope so clients need
+    exactly one parsing strategy. Success responses carry `data`; failures carry a
+    stable machine-readable `errorCode` and never leak stack traces.
+
+    ## Authentication
+
+    Bearer JWT (HS256). `POST /auth/login` returns a short-lived access token and a
+    long-lived refresh token. Send `Authorization: Bearer <accessToken>`.
+
+    Two roles exist: `USER` (shopper) and `ADMIN` (back office).
+
+    ## Payments are simulated
+
+    There is **no real payment provider integrated**. `payment-service` implements a
+    mock gateway that produces deterministic outcomes for demonstration purposes.
+    No card numbers, CVVs or bank credentials are ever accepted or stored.
+
+  contact:
+    name: Nova Mart Engineering
+    url: https://github.com/novamart/online-shopping
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local API Gateway (Docker Compose)
+
+tags:
+  - name: Authentication
+    description: Registration, login and token lifecycle
+  - name: Users
+    description: Profile, address book, status and role management
+  - name: Products
+    description: Catalogue browsing and administration
+  - name: Categories
+    description: Category taxonomy
+  - name: Brands
+    description: Brand directory
+  - name: Cart
+    description: The signed-in shopper's cart
+  - name: Wishlist
+    description: The signed-in shopper's saved items
+  - name: Reviews
+    description: Product reviews, ratings and summary metrics
+  - name: Orders
+    description: Order placement, saga orchestration, history and lifecycle
+  - name: Coupons
+    description: Promotional vouchers and discount validation
+  - name: Payments
+    description: Simulated payment capture and verification
+  - name: Inventory
+    description: Stock levels, reservations and releases
+  - name: Notifications
+    description: Transactional message log and read tracking
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # =====================================================================
+  #  AUTHENTICATION
+  # =====================================================================
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      summary: Register a new shopper account
+      description: Creates a `USER` account and immediately issues a token pair. Email must be unique.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              firstName: Ananya
+              lastName: Iyer
+              email: ananya.iyer@example.com
+              password: Str0ng!Pass
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: An account with this email already exists
+                errorCode: EMAIL_ALREADY_EXISTS
+                timestamp: '2026-02-14T09:31:08.442Z'
+                path: /api/v1/auth/register
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Exchange credentials for a token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: demo@novamart.dev
+              password: Demo@12345
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Bad credentials or disabled account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Incorrect email or password
+                errorCode: INVALID_CREDENTIALS
+                timestamp: '2026-02-14T09:32:11.001Z'
+                path: /api/v1/auth/login
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshToken
+      summary: Rotate an expired access token
+      description: Consumes a refresh token and issues a new pair. The presented refresh token is revoked (single use).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Refresh token invalid, expired or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Revoke the caller's refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Token revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # =====================================================================
+  #  USERS
+  # =====================================================================
+
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getMyProfile
+      summary: Get the signed-in user's profile
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Users]
+      operationId: updateMyProfile
+      summary: Update the signed-in user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/addresses:
+    get:
+      tags: [Users]
+      operationId: listAddresses
+      summary: List the caller's saved addresses
+      responses:
+        '200':
+          description: Address book
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Address'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Users]
+      operationId: createAddress
+      summary: Add an address
+      description: The first address saved for a user automatically becomes the default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+      responses:
+        '201':
+          description: Address created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Address'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/addresses/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Users]
+      operationId: updateAddress
+      summary: Update an address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+      responses:
+        '200':
+          description: Address updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Address'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Users]
+      operationId: deleteAddress
+      summary: Delete an address
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List all users (admin)
+      description: Administrator only. Backs the admin dashboard user table.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: search
+          in: query
+          description: Case-insensitive match against name or email
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paged users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedUsers'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # =====================================================================
+  #  PRODUCTS
+  # =====================================================================
+
+  /products:
+    get:
+      tags: [Products]
+      operationId: listProducts
+      summary: Browse the catalogue
+      description: |
+        Public, paginated catalogue search. All filters combine with AND.
+        `sort` accepts `field,direction` where direction is `asc` or `desc`.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: search
+          in: query
+          description: Free-text match against product name and description
+          schema:
+            type: string
+          example: headphones
+        - name: category
+          in: query
+          description: Category slug
+          schema:
+            type: string
+          example: audio
+        - name: brand
+          in: query
+          description: Brand slug
+          schema:
+            type: string
+          example: aurelia-audio
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: featured
+          in: query
+          description: Restrict to products flagged for the storefront home page
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: createdAt,desc
+            enum:
+              - createdAt,desc
+              - price,asc
+              - price,desc
+              - name,asc
+              - name,desc
+              - ratingAverage,desc
+          example: price,asc
+      responses:
+        '200':
+          description: Paged catalogue
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedProducts'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags: [Products]
+      operationId: createProduct
+      summary: Create a product (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRequest'
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: SKU or slug already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Product UUID or URL slug
+        schema:
+          type: string
+        example: aurelia-halo-anc-headphones
+    get:
+      tags: [Products]
+      operationId: getProduct
+      summary: Get a single product
+      description: Accepts either the product UUID or its slug, so storefront URLs stay readable.
+      security: []
+      responses:
+        '200':
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProductDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Products]
+      operationId: updateProduct
+      summary: Update a product (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRequest'
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Products]
+      operationId: deleteProduct
+      summary: Delete a product (admin)
+      description: Soft-deletes the product so historical order lines remain resolvable.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /products/{id}/image:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Product UUID
+        schema:
+          type: string
+          format: uuid
+        example: 8b7d5e62-9f3a-4e8c-b631-7e04f2d3a901
+    post:
+      tags: [Products]
+      operationId: uploadProductImage
+      summary: Upload a product image from local device (admin)
+      description: |
+        Uploads a PNG, JPG, JPEG, or WEBP image file up to 5 MB for the product.
+        Persists the image to local storage, saves the relative path in the product database,
+        and deletes any superseded uploaded image.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The image file (JPG, JPEG, PNG, WEBP, max 5 MB)
+      responses:
+        '200':
+          description: Product image uploaded successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProductImageUploadResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /products/batch:
+    post:
+      tags: [Products]
+      operationId: getProductsByIds
+      summary: Resolve many products at once
+      description: |
+        Bulk lookup used by other services (order-service takes a price and name
+        snapshot at checkout time) and by the cart page. Avoids N+1 round trips.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productIds]
+              properties:
+                productIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Matching products, in no guaranteed order. Unknown ids are omitted.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # =====================================================================
+  #  CATEGORIES AND BRANDS
+  # =====================================================================
+
+  /categories:
+    get:
+      tags: [Categories]
+      operationId: listCategories
+      summary: List categories
+      security: []
+      responses:
+        '200':
+          description: Categories with live product counts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Category'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Categories]
+      operationId: createCategory
+      summary: Create a category (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Slug already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Categories]
+      operationId: updateCategory
+      summary: Update a category (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+      responses:
+        '200':
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Categories]
+      operationId: deleteCategory
+      summary: Delete a category (admin)
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Category still has products assigned to it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Cannot delete a category that still contains products
+                errorCode: CATEGORY_NOT_EMPTY
+                timestamp: '2026-02-14T10:02:44.120Z'
+                path: /api/v1/categories/6f1d...
+
+  /brands:
+    get:
+      tags: [Brands]
+      operationId: listBrands
+      summary: List brands
+      security: []
+      responses:
+        '200':
+          description: Brands
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Brand'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # =====================================================================
+  #  CART
+  # =====================================================================
+
+  /cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      summary: Get the caller's cart
+      description: Returns an empty cart rather than 404 when the shopper has never added anything.
+      responses:
+        '200':
+          description: Cart with computed totals
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Cart]
+      operationId: clearCart
+      summary: Remove every line from the cart
+      responses:
+        '204':
+          description: Cart emptied
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      operationId: addCartItem
+      summary: Add a product to the cart
+      description: |
+        Adding a product already present increments the existing line rather than
+        creating a duplicate. Stock availability is checked against inventory-service
+        before the line is written.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItemRequest'
+            example:
+              productId: 8f14e45f-ea8f-4b2a-9d1c-3c2b7a51de90
+              quantity: 1
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Requested quantity exceeds available stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Only 3 units of this item are available
+                errorCode: INSUFFICIENT_STOCK
+                timestamp: '2026-02-14T10:10:00.000Z'
+                path: /api/v1/cart/items
+
+  /cart/items/{productId}:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Cart]
+      operationId: updateCartItem
+      summary: Set the quantity of a cart line
+      description: Sending `quantity` of 0 removes the line.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCartItemRequest'
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Requested quantity exceeds available stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Cart]
+      operationId: removeCartItem
+      summary: Remove a line from the cart
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # =====================================================================
+  #  ORDERS
+  # =====================================================================
+
+  /orders:
+    post:
+      tags: [Orders]
+      operationId: createOrder
+      summary: Place an order (checkout)
+      description: |
+        Orchestrates the checkout saga across four services. See
+        `docs/architecture.md` for the full sequence and compensation rules.
+
+        1. Read the caller's cart from **cart-service**
+        2. Snapshot name and price for every line from **product-service**
+        3. Reserve stock line by line in **inventory-service**
+        4. Persist the order as `PENDING`
+        5. Create and verify a payment in **payment-service**
+        6. On success commit the reservations, clear the cart, emit a notification
+           and move the order to `CONFIRMED`
+        7. On failure release every reservation, mark the order `CANCELLED`
+           and return `402`
+
+        Supply an `Idempotency-Key` header so a retried request (double-clicked
+        button, flaky network) returns the original order instead of charging twice.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Client-generated unique key. Replaying the same key returns the original order.
+          schema:
+            type: string
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order placed and paid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Payment was declined. Stock reservations have been released and the order cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Payment was declined by the issuer
+                errorCode: PAYMENT_FAILED
+                timestamp: '2026-02-14T10:22:31.884Z'
+                path: /api/v1/orders
+        '409':
+          description: Cart is empty, or one or more lines no longer have stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: A referenced product or address no longer exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: A downstream service required for checkout is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List orders
+      description: |
+        A `USER` always receives only their own orders; the `userId` filter is
+        ignored for them. An `ADMIN` receives every order and may filter by user.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: userId
+          in: query
+          description: Admin only. Ignored when the caller is a shopper.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paged orders, newest first
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedOrders'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders/stats:
+    get:
+      tags: [Orders]
+      operationId: getOrderStats
+      summary: Aggregated order metrics (admin)
+      description: Backs the admin dashboard tiles. Computed with SQL aggregates, never by loading all orders.
+      responses:
+        '200':
+          description: Metrics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Get one order with its full status timeline
+      responses:
+        '200':
+          description: Order detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OrderDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Orders]
+      operationId: cancelOrder
+      summary: Cancel an order
+      description: |
+        Permitted only from `PENDING`, `CONFIRMED` or `PROCESSING`. Cancelling
+        returns the reserved stock to inventory and, when a payment succeeded,
+        marks it `REFUNDED`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The order is in a state that cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: A SHIPPED order can no longer be cancelled
+                errorCode: INVALID_ORDER_TRANSITION
+                timestamp: '2026-02-14T11:04:19.556Z'
+                path: /api/v1/orders/2c9a.../cancel
+
+  /orders/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Orders]
+      operationId: updateOrderStatus
+      summary: Advance an order through fulfilment (admin)
+      description: |
+        Only forward transitions along
+        `CONFIRMED -> PROCESSING -> SHIPPED -> DELIVERED` are accepted.
+        Any other target returns `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/OrderStatus'
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Status advanced
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Illegal state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  #  PAYMENTS
+  # =====================================================================
+
+  /payments:
+    post:
+      tags: [Payments]
+      operationId: createPayment
+      summary: Open a payment against an order
+      description: |
+        Creates an `INITIATED` payment and returns a transaction reference.
+        Normally called by order-service during checkout rather than by a browser.
+
+        **This is a simulated gateway.** No card data is accepted. `MOCK_CARD`
+        settles immediately on verification; `CASH_ON_DELIVERY` stays `INITIATED`
+        until the courier collects.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment opened
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Payments]
+      operationId: listPayments
+      summary: List payments (admin)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/PaymentStatus'
+      responses:
+        '200':
+          description: Paged payments
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedPayments'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      summary: Get a payment with its transaction trail
+      responses:
+        '200':
+          description: Payment detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payments/{id}/verify:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Payments]
+      operationId: verifyPayment
+      summary: Settle a payment through the simulated gateway
+      description: |
+        Moves an `INITIATED` payment to `SUCCESS` or `FAILED`. The outcome is
+        **deterministic, not random**, so demos and tests are reproducible:
+
+        - `CASH_ON_DELIVERY` remains `INITIATED` and the order is still confirmed
+        - a request carrying `simulateFailure: true` always yields `FAILED`
+        - every other `MOCK_CARD` payment yields `SUCCESS`
+
+        Verifying an already-settled payment is idempotent and returns the
+        existing outcome rather than re-settling it.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                simulateFailure:
+                  type: boolean
+                  default: false
+                  description: Demo hook that forces a declined payment so the failure path can be shown.
+      responses:
+        '200':
+          description: Settlement outcome
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Payment is in a state that cannot be verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  #  INVENTORY
+  # =====================================================================
+
+  /inventory:
+    get:
+      tags: [Inventory]
+      operationId: listInventory
+      summary: List stock records (admin)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: lowStockOnly
+          in: query
+          description: Return only records where available quantity is at or below the reorder threshold
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Paged stock records
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedInventory'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /inventory/batch:
+    post:
+      tags: [Inventory]
+      operationId: getInventoryBatch
+      summary: Check availability for many products at once
+      description: |
+        Added to the contract when the cart page needed live stock for every line.
+        Asking product by product would issue one HTTP round trip per line, which
+        is the N+1 problem moved onto the network where each hop costs
+        milliseconds rather than microseconds. One call bounds it at a constant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productIds]
+              properties:
+                productIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Stock records for the ids that exist. Unknown ids are omitted rather than returned as errors.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /inventory/{productId}:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Inventory]
+      operationId: getInventory
+      summary: Check availability for one product
+      security: []
+      responses:
+        '200':
+          description: Stock record
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Inventory]
+      operationId: updateInventory
+      summary: Set the on-hand quantity (admin)
+      description: Records a `MANUAL_ADJUSTMENT` stock transaction for the audit trail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryRequest'
+      responses:
+        '200':
+          description: Stock updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /inventory/{productId}/reserve:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Inventory]
+      operationId: reserveStock
+      summary: Hold stock for an in-flight order
+      description: |
+        Moves units from `availableQuantity` to `reservedQuantity` under a
+        row-level lock, so two shoppers cannot reserve the same last unit.
+        Called by order-service during checkout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockMovementRequest'
+      responses:
+        '200':
+          description: Stock reserved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Not enough available stock to satisfy the reservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Only 2 units available, 5 requested
+                errorCode: INSUFFICIENT_STOCK
+                timestamp: '2026-02-14T10:21:02.311Z'
+                path: /api/v1/inventory/8f14.../reserve
+
+  /inventory/{productId}/release:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Inventory]
+      operationId: releaseStock
+      summary: Return reserved stock to the available pool
+      description: The compensating action for `reserve`. Used when payment fails or an order is cancelled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockMovementRequest'
+      responses:
+        '200':
+          description: Stock released
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Attempted to release more than is currently reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inventory/{productId}/commit:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Inventory]
+      operationId: commitStock
+      summary: Consume a reservation once payment has settled
+      description: |
+        Permanently removes units from both `reservedQuantity` and `totalQuantity`.
+        This is the third leg of the reserve / release / commit protocol and is what
+        makes the checkout saga safe: stock leaves the warehouse only after money
+        has actually been captured.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockMovementRequest'
+      responses:
+        '200':
+          description: Reservation consumed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InventoryItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Attempted to commit more than is currently reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  #  NOTIFICATIONS
+  # =====================================================================
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications
+      description: A shopper sees only their own; an administrator sees every record.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/NotificationType'
+      responses:
+        '200':
+          description: Paged notifications, newest first
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PagedNotifications'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Notifications]
+      operationId: createNotification
+      summary: Record and dispatch a notification
+      description: |
+        Called by other services when a business event occurs. Delivery uses a
+        **mock channel that writes to the service log** because no SMTP or SMS
+        provider is configured for local development. The record is always
+        persisted so the message history is real even though the transport is not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNotificationRequest'
+      responses:
+        '201':
+          description: Notification recorded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+# =========================================================================
+#  COMPONENTS
+# =========================================================================
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT issued by auth-service. Send as `Authorization: Bearer <accessToken>`.'
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Zero-based page index
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      description: Page size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 12
+
+  responses:
+    ValidationError:
+      description: The request body or query string failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Request validation failed
+            errorCode: VALIDATION_FAILED
+            timestamp: '2026-02-14T09:40:12.882Z'
+            path: /api/v1/auth/register
+            fieldErrors:
+              - field: password
+                message: Password must be at least 8 characters
+              - field: email
+                message: Must be a well-formed email address
+    Unauthorized:
+      description: Missing, malformed or expired access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Authentication is required to access this resource
+            errorCode: UNAUTHORIZED
+            timestamp: '2026-02-14T09:41:03.114Z'
+            path: /api/v1/cart
+    Forbidden:
+      description: Authenticated, but not allowed to perform this action
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: You do not have permission to perform this action
+            errorCode: FORBIDDEN
+            timestamp: '2026-02-14T09:42:55.900Z'
+            path: /api/v1/products
+    ServerError:
+      description: Unexpected server-side failure. The response never contains a stack trace.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Something went wrong on our side. Please try again.
+            errorCode: INTERNAL_ERROR
+            timestamp: '2026-02-14T09:44:02.010Z'
+            path: /api/v1/categories
+    NotFound:
+      description: The requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Product not found
+            errorCode: PRODUCT_NOT_FOUND
+            timestamp: '2026-02-14T09:43:30.720Z'
+            path: /api/v1/products/8f14e45f-ea8f-4b2a-9d1c-3c2b7a51de90
+
+  schemas:
+
+    # ---------- envelope ----------
+
+    ApiResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Product retrieved successfully
+        data:
+          description: Operation-specific payload. Absent for `204` responses.
+
+    ErrorResponse:
+      type: object
+      required: [success, message, errorCode, timestamp]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        message:
+          type: string
+          description: Human-readable, safe to show a shopper. Never contains a stack trace.
+        errorCode:
+          type: string
+          description: Stable machine-readable identifier. Clients branch on this, not on the message text.
+          example: PRODUCT_NOT_FOUND
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        fieldErrors:
+          type: array
+          description: Present only when `errorCode` is `VALIDATION_FAILED`.
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages, first, last]
+      properties:
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 12
+        totalElements:
+          type: integer
+          format: int64
+          example: 24
+        totalPages:
+          type: integer
+          example: 2
+        first:
+          type: boolean
+        last:
+          type: boolean
+
+    # ---------- auth ----------
+
+    RegisterRequest:
+      type: object
+      required: [firstName, lastName, email, password]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        email:
+          type: string
+          format: email
+          maxLength: 180
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 100
+          description: Stored only as a BCrypt hash. Never logged, never returned.
+        phone:
+          type: string
+          maxLength: 20
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    UserProfile:
+      type: object
+      required: [id, firstName, lastName, email, roles, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [USER, ADMIN]
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 60
+        phone:
+          type: string
+          maxLength: 20
+          nullable: true
+
+    PagedUsers:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserProfile'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+
+    Address:
+      type: object
+      required: [id, label, recipientName, phone, line1, city, state, postalCode, country, isDefault]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          example: Home
+        recipientName:
+          type: string
+        phone:
+          type: string
+        line1:
+          type: string
+        line2:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          example: India
+        isDefault:
+          type: boolean
+
+    AddressRequest:
+      type: object
+      required: [label, recipientName, phone, line1, city, state, postalCode, country]
+      properties:
+        label:
+          type: string
+          maxLength: 40
+        recipientName:
+          type: string
+          maxLength: 120
+        phone:
+          type: string
+          maxLength: 20
+        line1:
+          type: string
+          maxLength: 200
+        line2:
+          type: string
+          maxLength: 200
+          nullable: true
+        city:
+          type: string
+          maxLength: 80
+        state:
+          type: string
+          maxLength: 80
+        postalCode:
+          type: string
+          maxLength: 16
+        country:
+          type: string
+          maxLength: 80
+        isDefault:
+          type: boolean
+          default: false
+
+    # ---------- catalogue ----------
+
+    Product:
+      type: object
+      required: [id, sku, slug, name, price, currency, categoryId, categoryName, imageUrl, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+          example: AUR-HALO-BLK
+        slug:
+          type: string
+          example: aurelia-halo-anc-headphones
+        name:
+          type: string
+        shortDescription:
+          type: string
+        price:
+          type: number
+          format: double
+          description: Current selling price
+          example: 18999.00
+        compareAtPrice:
+          type: number
+          format: double
+          nullable: true
+          description: Original price when the item is discounted. Null when not on offer.
+          example: 24999.00
+        discountPercent:
+          type: integer
+          nullable: true
+          description: Derived from price and compareAtPrice. Null when not on offer.
+          example: 24
+        currency:
+          type: string
+          example: INR
+        categoryId:
+          type: string
+          format: uuid
+        categoryName:
+          type: string
+        categorySlug:
+          type: string
+        brandId:
+          type: string
+          format: uuid
+          nullable: true
+        brandName:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          format: uri
+        ratingAverage:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+          example: 4.6
+        ratingCount:
+          type: integer
+          example: 214
+        featured:
+          type: boolean
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            description:
+              type: string
+            images:
+              type: array
+              items:
+                type: string
+                format: uri
+            specifications:
+              type: array
+              items:
+                type: object
+                required: [label, value]
+                properties:
+                  label:
+                    type: string
+                  value:
+                    type: string
+            availability:
+              $ref: '#/components/schemas/InventoryItem'
+
+    ProductRequest:
+      type: object
+      required: [sku, name, description, price, categoryId]
+      properties:
+        sku:
+          type: string
+          minLength: 2
+          maxLength: 40
+        name:
+          type: string
+          minLength: 2
+          maxLength: 180
+        shortDescription:
+          type: string
+          maxLength: 300
+        description:
+          type: string
+          minLength: 10
+          maxLength: 5000
+        price:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        compareAtPrice:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+        brandId:
+          type: string
+          format: uuid
+          nullable: true
+        imageUrl:
+          type: string
+          description: Persistent image path or URL
+          example: /uploads/products/8b7d5e62-9f3a-4e8c-b631-7e04f2d3a901.webp
+        images:
+          type: array
+          items:
+            type: string
+        specifications:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              value:
+                type: string
+        featured:
+          type: boolean
+          default: false
+        active:
+          type: boolean
+          default: true
+        initialStock:
+          type: integer
+          minimum: 0
+          description: |
+            Applied on creation only. product-service calls inventory-service to
+            seed the stock record, because inventory is a separate bounded context
+            and product-service must not write to `inventory_db` directly.
+
+    ProductImageUploadResponse:
+      type: object
+      required: [imageUrl]
+      properties:
+        imageUrl:
+          type: string
+          description: Persistent relative path of the uploaded image file
+          example: /uploads/products/8b7d5e62-9f3a-4e8c-b631-7e04f2d3a901.webp
+
+    Category:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        productCount:
+          type: integer
+
+    CategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+
+    Brand:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        productCount:
+          type: integer
+
+    PagedProducts:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+
+    # ---------- cart ----------
+
+    Cart:
+      type: object
+      required: [id, userId, items, subtotal, totalQuantity, currency]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        subtotal:
+          type: number
+          format: double
+          description: Sum of line totals. Delivery and discounts are applied at checkout, not here.
+        totalQuantity:
+          type: integer
+        currency:
+          type: string
+          example: INR
+        updatedAt:
+          type: string
+          format: date-time
+
+    CartItem:
+      type: object
+      required: [productId, name, slug, imageUrl, unitPrice, quantity, lineTotal]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        unitPrice:
+          type: number
+          format: double
+          description: Refreshed from product-service on every read, so a price change is visible before checkout.
+        quantity:
+          type: integer
+          minimum: 1
+        lineTotal:
+          type: number
+          format: double
+        availableQuantity:
+          type: integer
+          description: Live stock, so the cart page can warn before the shopper reaches checkout.
+        inStock:
+          type: boolean
+
+    AddCartItemRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: Zero removes the line.
+
+    # ---------- orders ----------
+
+    OrderStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED]
+      description: |
+        Legal transitions:
+
+        ```
+        PENDING   -> CONFIRMED | CANCELLED
+        CONFIRMED -> PROCESSING | CANCELLED
+        PROCESSING-> SHIPPED | CANCELLED
+        SHIPPED   -> DELIVERED
+        DELIVERED -> (terminal)
+        CANCELLED -> (terminal)
+        ```
+
+    CreateOrderRequest:
+      type: object
+      required: [addressId, paymentMethod]
+      properties:
+        addressId:
+          type: string
+          format: uuid
+          description: Must belong to the caller. Snapshotted onto the order so later address edits do not rewrite history.
+        paymentMethod:
+          $ref: '#/components/schemas/PaymentMethod'
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+        simulateFailure:
+          type: boolean
+          default: false
+          description: |
+            Demo-only switch that forces the mock gateway to decline, so the
+            compensation path (release stock, cancel order) can be demonstrated.
+
+    Order:
+      type: object
+      required: [id, orderNumber, userId, status, items, subtotal, deliveryFee, discount, total, currency, paymentStatus, placedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNumber:
+          type: string
+          description: Human-friendly reference shown to the shopper
+          example: NM-2026-0001847
+        userId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        subtotal:
+          type: number
+          format: double
+        deliveryFee:
+          type: number
+          format: double
+          description: Waived above the free-delivery threshold.
+        discount:
+          type: number
+          format: double
+        total:
+          type: number
+          format: double
+        currency:
+          type: string
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        paymentId:
+          type: string
+          format: uuid
+          nullable: true
+        paymentStatus:
+          $ref: '#/components/schemas/PaymentStatus'
+        paymentMethod:
+          $ref: '#/components/schemas/PaymentMethod'
+        estimatedDeliveryDate:
+          type: string
+          format: date
+          nullable: true
+        placedAt:
+          type: string
+          format: date-time
+        cancelledReason:
+          type: string
+          nullable: true
+
+    OrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            timeline:
+              type: array
+              description: Append-only audit of every status change, oldest first.
+              items:
+                $ref: '#/components/schemas/OrderEvent'
+
+    OrderEvent:
+      type: object
+      required: [status, occurredAt]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        note:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+
+    OrderItem:
+      type: object
+      required: [productId, name, unitPrice, quantity, lineTotal]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+          description: Snapshotted at purchase time so renaming a product does not rewrite past orders.
+        slug:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+        unitPrice:
+          type: number
+          format: double
+          description: Snapshotted at purchase time.
+        quantity:
+          type: integer
+        lineTotal:
+          type: number
+          format: double
+
+    PagedOrders:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+
+    OrderStats:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+          format: double
+          description: Sum of totals for orders that reached CONFIRMED or beyond, excluding cancellations.
+        totalOrders:
+          type: integer
+          format: int64
+        pendingOrders:
+          type: integer
+          format: int64
+        cancelledOrders:
+          type: integer
+          format: int64
+        averageOrderValue:
+          type: number
+          format: double
+        revenueByDay:
+          type: array
+          description: Trailing 14 days. Days with no orders are present with zero, so the chart has no gaps.
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              revenue:
+                type: number
+                format: double
+              orders:
+                type: integer
+        statusBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                $ref: '#/components/schemas/OrderStatus'
+              count:
+                type: integer
+                format: int64
+
+    # ---------- payments ----------
+
+    PaymentMethod:
+      type: string
+      enum: [MOCK_CARD, CASH_ON_DELIVERY]
+      description: |
+        `MOCK_CARD` is a simulated gateway - no card details are collected or stored.
+        `CASH_ON_DELIVERY` defers capture until handover.
+
+    PaymentStatus:
+      type: string
+      enum: [INITIATED, SUCCESS, FAILED, REFUNDED]
+
+    CreatePaymentRequest:
+      type: object
+      required: [orderId, amount, currency, method]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        currency:
+          type: string
+          example: INR
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+
+    Payment:
+      type: object
+      required: [id, orderId, amount, currency, method, status, transactionReference, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+        currency:
+          type: string
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        transactionReference:
+          type: string
+          example: NMPAY-7QK3M2XB
+        failureReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        settledAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaymentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Payment'
+        - type: object
+          properties:
+            transactions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaction'
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [AUTHORIZE, CAPTURE, REFUND, DECLINE]
+        amount:
+          type: number
+          format: double
+        gatewayReference:
+          type: string
+        message:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+
+    PagedPayments:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+
+    # ---------- inventory ----------
+
+    InventoryItem:
+      type: object
+      required: [productId, totalQuantity, reservedQuantity, availableQuantity, inStock]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        totalQuantity:
+          type: integer
+          description: Physical units held.
+        reservedQuantity:
+          type: integer
+          description: Units held for orders that are in flight but not yet settled.
+        availableQuantity:
+          type: integer
+          description: totalQuantity minus reservedQuantity. This is what a shopper may buy.
+        reorderThreshold:
+          type: integer
+          description: Availability at or below this level marks the product low stock in the admin dashboard.
+          example: 5
+        inStock:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    StockMovementRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+        referenceId:
+          type: string
+          description: Order id, recorded on the stock transaction for traceability.
+          nullable: true
+
+    UpdateInventoryRequest:
+      type: object
+      required: [totalQuantity]
+      properties:
+        totalQuantity:
+          type: integer
+          minimum: 0
+        reorderThreshold:
+          type: integer
+          minimum: 0
+
+    PagedInventory:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryItem'
+        page:
+          $ref: '#/components/schemas/PageMeta'
+
+    # ---------- notifications ----------
+
+    NotificationType:
+      type: string
+      enum:
+        - ORDER_CONFIRMATION
+        - PAYMENT_CONFIRMATION
+        - PAYMENT_FAILED
+        - ORDER_SHIPPED
+        - ORDER_DELIVERED
+        - ORDER_CANCELLED
+        - WELCOME
+
+    NotificationChannel:
+      type: string
+      enum: [EMAIL, SMS, IN_APP]
+
+    Notification:
+      type: object
+      required: [id, userId, type, channel, subject, body, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        channel:
+          $ref: '#/components/schemas/NotificationChannel'
+        recipient:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        referenceId:
+          type: string
+          nullable: true
+          description: Related order or payment id.
+        status:
+          type: string
+          enum: [QUEUED, SENT, FAILED]
+          description: |
+            `SENT` means the mock transport accepted the message and wrote it to the
+            service log. It does **not** mean an email left a real mail server.
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateNotificationRequest:
+      type: object
+      required: [userId, type, subject, body]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        channel:
+          $ref: '#/components/schemas/NotificationChannel'
+        recipient:
+          type: string
+          maxLength: 180
+        subject:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 4000
+        referenceId:
+          type: string
+          nullable: true
+
+    PagedNotifications:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          $ref: '#/components/schemas/PageMeta'

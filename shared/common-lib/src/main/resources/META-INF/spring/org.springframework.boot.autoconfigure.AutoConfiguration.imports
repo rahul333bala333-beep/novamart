@@ -1,0 +1,2 @@
+com.novamart.common.autoconfigure.NovaMartCoreAutoConfiguration
+com.novamart.common.autoconfigure.NovaMartWebAutoConfiguration

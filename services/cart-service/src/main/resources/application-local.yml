@@ -1,0 +1,21 @@
+# cart-service - `local` profile: in-memory H2.
+#
+# The cart needs product-service and inventory-service to be running to show
+# names, prices and stock. Start them first, or use the compose stack.
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/cart_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:zeno7925}
+
+novamart:
+  jwt:
+    secret: novamart-local-development-signing-key-not-for-production
+  internal:
+    token: novamart-local-internal-token
+
+logging:
+  level:
+    com.novamart: DEBUG

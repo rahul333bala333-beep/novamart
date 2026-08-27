@@ -1,0 +1,83 @@
+# order-service - default (PostgreSQL) profile.
+#
+# This service talks to five others. Every one of those URLs is an environment
+# variable so the same jar runs unchanged against localhost, against Docker
+# Compose service names, or against real hostnames.
+
+server:
+  port: ${SERVER_PORT:8084}
+  error:
+    include-stacktrace: never
+    include-message: never
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/order_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    driver-class-name: ${DB_DRIVER:com.mysql.cj.jdbc.Driver}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:zeno7925}
+    hikari:
+      pool-name: order-pool
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 2
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        type:
+          preferred_uuid_jdbc_type: VARCHAR
+        jdbc:
+          time_zone: UTC
+        order_inserts: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: false
+
+novamart:
+  jwt:
+    secret: ${NOVAMART_JWT_SECRET}
+    issuer: novamart
+  internal:
+    token: ${NOVAMART_INTERNAL_TOKEN}
+    # Checkout makes several sequential calls, so its own timeout budget is the
+    # sum of theirs. Kept deliberately tight: a shopper staring at a spinner
+    # would rather be told to try again than wait thirty seconds.
+    connect-timeout: 2s
+    read-timeout: 6s
+  services:
+    cart-url: ${CART_SERVICE_URL:http://localhost:8083}
+    product-url: ${PRODUCT_SERVICE_URL:http://localhost:8082}
+    inventory-url: ${INVENTORY_SERVICE_URL:http://localhost:8086}
+    payment-url: ${PAYMENT_SERVICE_URL:http://localhost:8085}
+    notification-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8087}
+    auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  pricing:
+    free-delivery-threshold: ${FREE_DELIVERY_THRESHOLD:999.00}
+    delivery-fee: ${DELIVERY_FEE:79.00}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.novamart: ${LOG_LEVEL:INFO}

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.novamart</groupId>
+    <artifactId>novamart-platform</artifactId>
+    <version>1.0.0</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>common-lib</artifactId>
+  <packaging>jar</packaging>
+  <name>Nova Mart Common Library</name>
+
+  <description>
+    Cross-cutting concerns shared by every service: the response envelope, the
+    error taxonomy and its handler, JWT issuing and verification, and the
+    service-to-service HTTP client.
+
+    This library holds NO business logic and NO entities. Sharing a domain model
+    between microservices would couple their release cycles and defeat the point
+    of separate services; sharing the wire format does not.
+
+    The servlet and Spring Security dependencies are declared `optional` on
+    purpose. The API gateway is a reactive (WebFlux) application and must not
+    receive the servlet stack transitively, but it still needs the JWT verifier.
+    Optional dependencies are not transitive, so each consumer supplies the web
+    stack it actually runs on.
+  </description>
+
+  <dependencies>
+    <!-- Always required: JWT handling and Jackson binding -->
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
+
+    <!-- Servlet-only pieces. See the note above on why these are optional. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.data</groupId>
+      <artifactId>spring-data-commons</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!-- Supplies org.springframework.dao.DataIntegrityViolationException, which the
+         handler translates into a 409 so a unique-constraint breach never surfaces
+         as a 500. Persistence itself lives in the services, hence optional. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-tx</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <optional>true</optional>
+    </dependency>
+  </dependencies>
+
+</project>

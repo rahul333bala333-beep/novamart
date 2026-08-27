@@ -1,0 +1,283 @@
+# ---------------------------------------------------------------------------
+# Nova Mart - full platform.
+#
+#   cp .env.example .env      # then edit the two secrets
+#   docker compose up --build
+#
+#   Storefront        http://localhost:3000
+#   Admin dashboard   http://localhost:3000/admin
+#   API gateway       http://localhost:8080/api/v1
+#   Swagger (per service) http://localhost:808X/swagger-ui.html
+#
+# Startup order is enforced with `depends_on: condition: service_healthy`
+# rather than plain `depends_on`, which only waits for a container to START.
+# A Spring Boot service takes several seconds after start before it can serve a
+# request, and without a health gate the services that depend on it spend that
+# window failing.
+# ---------------------------------------------------------------------------
+
+name: novamart
+
+# Common settings, declared once and merged into each service with a YAML anchor.
+# Repeating them eight times is how one service ends up with a different log
+# level or a stale secret name.
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks: [novamart]
+  environment: &service-env
+    SPRING_PROFILES_ACTIVE: docker
+    DB_USERNAME: ${POSTGRES_USER:-novamart}
+    DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required, see .env.example}
+    NOVAMART_JWT_SECRET: ${NOVAMART_JWT_SECRET:?NOVAMART_JWT_SECRET is required, see .env.example}
+    NOVAMART_INTERNAL_TOKEN: ${NOVAMART_INTERNAL_TOKEN:?NOVAMART_INTERNAL_TOKEN is required, see .env.example}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-service-build: &service-build
+  context: .
+  dockerfile: infrastructure/docker/service.Dockerfile
+
+services:
+
+  # ------------------------------------------------------------- database --
+  postgres:
+    image: postgres:16-alpine
+    container_name: novamart-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-novamart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-novamart}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs once, on an empty data directory, to create the seven per-service
+      # databases. See the file for why they share one server here.
+      - ./infrastructure/docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+    ports:
+      # Exposed for inspection with psql during development. In a real
+      # deployment this line would be removed and the database reachable only
+      # from inside the compose network.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-novamart}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks: [novamart]
+
+  # ------------------------------------------------------ auth-service --
+  auth-service:
+    <<: *service-defaults
+    container_name: novamart-auth-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/auth-service
+        ARTIFACT: auth-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8081
+      DB_URL: jdbc:postgresql://postgres:5432/auth_db
+      NOTIFICATION_SERVICE_URL: http://notification-service:8087
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ product-service --
+  product-service:
+    <<: *service-defaults
+    container_name: novamart-product-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/product-service
+        ARTIFACT: product-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8082
+      DB_URL: jdbc:postgresql://postgres:5432/product_db
+      INVENTORY_SERVICE_URL: http://inventory-service:8086
+    volumes:
+      - product-uploads:/app/uploads
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ cart-service --
+  cart-service:
+    <<: *service-defaults
+    container_name: novamart-cart-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/cart-service
+        ARTIFACT: cart-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8083
+      DB_URL: jdbc:postgresql://postgres:5432/cart_db
+      PRODUCT_SERVICE_URL: http://product-service:8082
+      INVENTORY_SERVICE_URL: http://inventory-service:8086
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ order-service --
+  order-service:
+    <<: *service-defaults
+    container_name: novamart-order-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/order-service
+        ARTIFACT: order-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8084
+      DB_URL: jdbc:postgresql://postgres:5432/order_db
+      CART_SERVICE_URL: http://cart-service:8083
+      PRODUCT_SERVICE_URL: http://product-service:8082
+      INVENTORY_SERVICE_URL: http://inventory-service:8086
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+      NOTIFICATION_SERVICE_URL: http://notification-service:8087
+      AUTH_SERVICE_URL: http://auth-service:8081
+      FREE_DELIVERY_THRESHOLD: ${FREE_DELIVERY_THRESHOLD:-999.00}
+      DELIVERY_FEE: ${DELIVERY_FEE:-79.00}
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ payment-service --
+  payment-service:
+    <<: *service-defaults
+    container_name: novamart-payment-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/payment-service
+        ARTIFACT: payment-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8085
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ inventory-service --
+  inventory-service:
+    <<: *service-defaults
+    container_name: novamart-inventory-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/inventory-service
+        ARTIFACT: inventory-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8086
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+
+    ports:
+      - "8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------ notification-service --
+  notification-service:
+    <<: *service-defaults
+    container_name: novamart-notification-service
+    build:
+      <<: *service-build
+      args:
+        MODULE: services/notification-service
+        ARTIFACT: notification-service
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8087
+      DB_URL: jdbc:postgresql://postgres:5432/notification_db
+
+    ports:
+      - "8087:8087"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # -------------------------------------------------------- api gateway --
+  api-gateway:
+    <<: *service-defaults
+    container_name: novamart-api-gateway
+    build:
+      <<: *service-build
+      args:
+        MODULE: api-gateway
+        ARTIFACT: api-gateway
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8080
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PRODUCT_SERVICE_URL: http://product-service:8082
+      CART_SERVICE_URL: http://cart-service:8083
+      ORDER_SERVICE_URL: http://order-service:8084
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+      INVENTORY_SERVICE_URL: http://inventory-service:8086
+      NOTIFICATION_SERVICE_URL: http://notification-service:8087
+    ports:
+      - "8080:8080"
+    # The gateway waits for every service it routes to. Coming up first would
+    # mean answering 503 for the first thirty seconds of every start.
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      cart-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
+  # ----------------------------------------------------------- frontend --
+  frontend:
+    container_name: novamart-frontend
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+      args:
+        # Read by the browser, so it must be an address the browser can reach.
+        # `http://api-gateway:8080` resolves only inside the compose network and
+        # would fail in the user's browser.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks: [novamart]
+
+networks:
+  novamart:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  product-uploads:

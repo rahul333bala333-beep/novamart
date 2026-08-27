@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.novamart</groupId>
+  <artifactId>novamart-platform</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <name>Nova Mart Platform</name>
+  <description>
+    Aggregator and dependency-management parent for the Nova Mart microservices
+    platform. Every runnable service inherits versions from here so that a
+    dependency upgrade happens in exactly one place.
+  </description>
+
+  <!--
+    Deliberately NOT using spring-boot-starter-parent as the POM parent.
+
+    Doing so would force every module to inherit Boot's resource filtering and
+    plugin bindings, including the modules that must stay plain libraries
+    (common-lib). Importing the BOM in dependencyManagement gives identical
+    version alignment while leaving each module free to decide whether it is a
+    library or an executable application.
+  -->
+
+  <modules>
+    <module>shared/common-lib</module>
+    <module>api-gateway</module>
+    <module>services/auth-service</module>
+    <module>services/product-service</module>
+    <module>services/cart-service</module>
+    <module>services/order-service</module>
+    <module>services/payment-service</module>
+    <module>services/inventory-service</module>
+    <module>services/notification-service</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!--
+      Targeting Java 21 (the current LTS) via the compiler `release` flag rather
+      than source/target. This means a newer JDK can build the project but the
+      bytecode stays compatible with the eclipse-temurin:21 runtime used in the
+      Docker images, so what is verified locally is what ships.
+    -->
+    <maven.compiler.release>21</maven.compiler.release>
+
+    <spring-boot.version>3.5.6</spring-boot.version>
+    <spring-cloud.version>2025.0.0</spring-cloud.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <springdoc.version>2.8.9</springdoc.version>
+
+
+    <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
+    <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- The shared library, so services depend on it without repeating a version -->
+      <dependency>
+        <groupId>com.novamart</groupId>
+        <artifactId>common-lib</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-api</artifactId>
+        <version>${jjwt.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-impl</artifactId>
+        <version>${jjwt.version}</version>
+        <scope>runtime</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-jackson</artifactId>
+        <version>${jjwt.version}</version>
+        <scope>runtime</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.springdoc</groupId>
+        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        <version>${springdoc.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.springdoc</groupId>
+        <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+        <version>${springdoc.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Every module gets the test stack; none of it reaches production jars -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Declared explicitly (it already arrives via the starter) so that
+         dependency:properties produces the ${org.mockito:mockito-core:jar}
+         path used for -javaagent above. -->
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring-boot.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler-plugin.version}</version>
+          <configuration>
+            <!-- Parameter names are required by Spring MVC to bind @PathVariable
+                 and @RequestParam without repeating the name in the annotation. -->
+            <parameters>true</parameters>
+            <compilerArgs>
+              <arg>-Xlint:deprecation</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>${maven-failsafe-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+
+      <!--
+        Two test tiers, separated by naming convention rather than by tags.
+
+        Surefire runs `*Test` during `mvn test`: fast unit tests with no Spring
+        context, no database and no clock. They are the ones a developer runs on
+        every save, so they have to stay in the low seconds.
+
+        Failsafe runs `*IT` during `mvn verify`: integration tests that start a
+        Spring context and a real (H2) database running the real migrations.
+        Keeping them out of `mvn test` is what stops the fast loop from becoming
+        slow enough that people stop running it.
+      -->
+      <!--
+        Resolve the Mockito agent jar so it can be attached with -javaagent
+        below. Mockito currently self-attaches, which prints a warning and is
+        scheduled to stop working: the JDK is removing dynamic agent loading.
+        Attaching it explicitly is the supported route and silences the warning
+        by fixing its cause.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>${maven-dependency-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>resolve-mockito-agent</id>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
+          <excludes>
+            <exclude>**/*IT.java</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
+          <includes>
+            <include>**/*IT.java</include>
+          </includes>
+          <!--
+            Point Failsafe at the plain classes directory rather than the
+            artifact. `spring-boot:repackage` rewrites the jar so application
+            classes live under BOOT-INF/classes, where Spring's test context
+            loader cannot find the @SpringBootApplication by scanning upward
+            from the test package.
+          -->
+          <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <!-- `verify` is what actually fails the build on an integration
+                   test failure; without it, failures are recorded and ignored. -->
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

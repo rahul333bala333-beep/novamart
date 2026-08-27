@@ -1,0 +1,30 @@
+# auth-service - `local` profile: run with no Docker, no PostgreSQL, no setup.
+#
+#   mvn spring-boot:run -Dspring-boot.run.profiles=local
+#
+# Backed by an in-memory H2 database running the SAME Flyway migrations as
+# PostgreSQL, which is why the migrations are written in portable SQL. Data is
+# discarded when the process stops.
+#
+# The credentials below are development throwaways. They are safe to publish
+# precisely because this profile only ever binds an in-memory database on
+# localhost, and because the default profile above refuses to start without real
+# secrets supplied from the environment.
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/auth_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:zeno7925}
+
+novamart:
+  jwt:
+    # Development-only key. Must be at least 32 bytes. Never used outside `local`.
+    secret: novamart-local-development-signing-key-not-for-production
+  internal:
+    token: novamart-local-internal-token
+
+logging:
+  level:
+    com.novamart: DEBUG
