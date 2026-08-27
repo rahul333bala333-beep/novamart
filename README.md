@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/assets/novamart-banner.svg" alt="NovaMart — Microservices E-Commerce Platform" width="100%" />
+<img src=".github/assets/novamart-banner.gif" alt="NovaMart — Microservices E-Commerce Platform" width="100%" />
 
 <br/>
 
@@ -46,7 +46,7 @@ The storefront and admin dashboard are a single **Next.js 16 + React 19** applic
 
 <div align="center">
 
-<img src=".github/assets/novamart-architecture.svg" alt="NovaMart isometric architecture: Next.js clients → Spring Cloud API Gateway → 7 domain microservices, each owning its own database" width="100%" />
+<img src=".github/assets/novamart-architecture.gif" alt="NovaMart isometric architecture: Next.js clients → Spring Cloud API Gateway → 7 domain microservices, each owning its own database" width="100%" />
 
 </div>
 
