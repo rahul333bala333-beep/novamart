@@ -1,0 +1,114 @@
+<svg width="1040" height="560" viewBox="0 0 1040 560" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="abg" x1="0" y1="0" x2="1040" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0e28"/><stop offset="1" stop-color="#111741"/>
+    </linearGradient>
+    <linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+    <linearGradient id="fe" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#10b981"/></linearGradient>
+    <linearGradient id="c1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient>
+    <linearGradient id="c2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+    <linearGradient id="c3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c084fc"/><stop offset="1" stop-color="#a855f7"/></linearGradient>
+    <linearGradient id="c4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset="1" stop-color="#ec4899"/></linearGradient>
+    <linearGradient id="topsheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <filter id="ds" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1040" height="560" rx="18" fill="url(#abg)"/>
+  <rect width="1040" height="560" rx="18" fill="none" stroke="#2a3170" stroke-width="1.5"/>
+
+  <!-- connectors (drawn first, behind cards) -->
+  <g stroke="#5b64b8" stroke-width="2" fill="none" opacity="0.8">
+    <!-- clients to gateway -->
+    <path d="M410 118 C410 150, 520 150, 520 172"/>
+    <path d="M630 118 C630 150, 520 150, 520 172"/>
+    <!-- gateway to distribution bus -->
+    <path d="M520 244 L520 300"/>
+    <path d="M70 300 L970 300" stroke="#3a4290"/>
+    <!-- bus drops to each service -->
+    <path d="M80 300 L80 356"/><path d="M228 300 L228 356"/><path d="M376 300 L376 356"/>
+    <path d="M524 300 L524 356"/><path d="M672 300 L672 356"/><path d="M820 300 L820 356"/><path d="M968 300 L968 356"/>
+  </g>
+
+  <!-- ===== helper: front-facing extruded cards ===== -->
+  <!-- Frontend clients -->
+  <g filter="url(#ds)">
+    <rect x="320" y="58" width="180" height="60" rx="12" fill="#0b8f6a"/>
+    <rect x="320" y="52" width="180" height="60" rx="12" fill="url(#fe)"/>
+    <rect x="326" y="56" width="168" height="20" rx="9" fill="url(#topsheen)"/>
+  </g>
+  <text x="410" y="80" text-anchor="middle" font-size="15" font-weight="800" fill="#04231a">Next.js 16</text>
+  <text x="410" y="98" text-anchor="middle" font-size="12" font-weight="600" fill="#053a2b">Storefront</text>
+
+  <g filter="url(#ds)">
+    <rect x="540" y="58" width="180" height="60" rx="12" fill="#0b8f6a"/>
+    <rect x="540" y="52" width="180" height="60" rx="12" fill="url(#fe)"/>
+    <rect x="546" y="56" width="168" height="20" rx="9" fill="url(#topsheen)"/>
+  </g>
+  <text x="630" y="80" text-anchor="middle" font-size="15" font-weight="800" fill="#04231a">Admin</text>
+  <text x="630" y="98" text-anchor="middle" font-size="12" font-weight="600" fill="#053a2b">Dashboard</text>
+
+  <!-- API Gateway -->
+  <g filter="url(#ds)">
+    <rect x="300" y="186" width="440" height="60" rx="12" fill="#b45309"/>
+    <rect x="300" y="178" width="440" height="60" rx="12" fill="url(#gw)"/>
+    <rect x="308" y="182" width="424" height="20" rx="9" fill="url(#topsheen)"/>
+  </g>
+  <text x="520" y="205" text-anchor="middle" font-size="17" font-weight="900" fill="#3b1e02">Spring Cloud API Gateway</text>
+  <text x="520" y="225" text-anchor="middle" font-size="13" font-weight="700" fill="#5a2f04">:8080 &#183; Routing &#183; CORS &#183; JWT Verify</text>
+
+  <!-- ===== 7 microservices (single row) ===== -->
+  <!-- Each: card + DB cylinder below. x-centers: 80 228 376 524 672 820 968 -->
+  <!-- 1 Auth -->
+  <g filter="url(#ds)"><rect x="18" y="362" width="124" height="62" rx="11" fill="#075985"/><rect x="18" y="356" width="124" height="62" rx="11" fill="url(#c1)"/><rect x="24" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="80" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#04212e">Auth</text>
+  <text x="80" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#063850">:8081</text>
+  <g transform="translate(80,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#7dd3fc"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#38bdf8"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#0ea5e9"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#e0f2fe" stroke-opacity="0.5"/></g>
+  <text x="80" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">auth_db</text>
+
+  <!-- 2 Product -->
+  <g filter="url(#ds)"><rect x="166" y="362" width="124" height="62" rx="11" fill="#075985"/><rect x="166" y="356" width="124" height="62" rx="11" fill="url(#c1)"/><rect x="172" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="228" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#04212e">Product</text>
+  <text x="228" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#063850">:8082</text>
+  <g transform="translate(228,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#7dd3fc"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#38bdf8"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#0ea5e9"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#e0f2fe" stroke-opacity="0.5"/></g>
+  <text x="228" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">product_db</text>
+
+  <!-- 3 Cart -->
+  <g filter="url(#ds)"><rect x="314" y="362" width="124" height="62" rx="11" fill="#3730a3"/><rect x="314" y="356" width="124" height="62" rx="11" fill="url(#c2)"/><rect x="320" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="376" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#0e0a3a">Cart</text>
+  <text x="376" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1668">:8083</text>
+  <g transform="translate(376,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#c7d2fe"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#818cf8"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#6366f1"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#eef2ff" stroke-opacity="0.5"/></g>
+  <text x="376" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">cart_db</text>
+
+  <!-- 4 Order -->
+  <g filter="url(#ds)"><rect x="462" y="362" width="124" height="62" rx="11" fill="#3730a3"/><rect x="462" y="356" width="124" height="62" rx="11" fill="url(#c2)"/><rect x="468" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="524" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#0e0a3a">Order</text>
+  <text x="524" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1668">:8084 &#9733; Saga</text>
+  <g transform="translate(524,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#c7d2fe"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#818cf8"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#6366f1"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#eef2ff" stroke-opacity="0.5"/></g>
+  <text x="524" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">order_db</text>
+
+  <!-- 5 Payment -->
+  <g filter="url(#ds)"><rect x="610" y="362" width="124" height="62" rx="11" fill="#7e22ce"/><rect x="610" y="356" width="124" height="62" rx="11" fill="url(#c3)"/><rect x="616" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="672" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#2a0a4a">Payment</text>
+  <text x="672" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#43126e">:8085</text>
+  <g transform="translate(672,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#e9d5ff"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#c084fc"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#a855f7"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#f5e9ff" stroke-opacity="0.5"/></g>
+  <text x="672" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">payment_db</text>
+
+  <!-- 6 Inventory -->
+  <g filter="url(#ds)"><rect x="758" y="362" width="124" height="62" rx="11" fill="#7e22ce"/><rect x="758" y="356" width="124" height="62" rx="11" fill="url(#c3)"/><rect x="764" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="820" y="381" text-anchor="middle" font-size="13" font-weight="800" fill="#2a0a4a">Inventory</text>
+  <text x="820" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#43126e">:8086</text>
+  <g transform="translate(820,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#e9d5ff"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#c084fc"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#a855f7"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#f5e9ff" stroke-opacity="0.5"/></g>
+  <text x="820" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">inventory_db</text>
+
+  <!-- 7 Notification -->
+  <g filter="url(#ds)"><rect x="906" y="362" width="124" height="62" rx="11" fill="#9d174d"/><rect x="906" y="356" width="124" height="62" rx="11" fill="url(#c4)"/><rect x="912" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
+  <text x="968" y="381" text-anchor="middle" font-size="13" font-weight="800" fill="#3f0620">Notify</text>
+  <text x="968" y="399" text-anchor="middle" font-size="11" font-weight="700" fill="#640d34">:8087</text>
+  <g transform="translate(968,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#fbcfe8"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#f472b6"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#ec4899"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#ffe9f5" stroke-opacity="0.5"/></g>
+  <text x="968" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">notification_db</text>
+
+  <!-- caption -->
+  <text x="520" y="536" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="1" fill="#7b84c0">Database&#8209;per&#8209;Service ownership &#183; independent Flyway migrations &#183; zero cross&#8209;service SQL</text>
+</svg>
