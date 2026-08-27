@@ -13,25 +13,48 @@
     <filter id="ds" x="-30%" y="-30%" width="160%" height="180%">
       <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="0.45"/>
     </filter>
+    <filter id="dot" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
 
   <rect width="1040" height="560" rx="18" fill="url(#abg)"/>
   <rect width="1040" height="560" rx="18" fill="none" stroke="#2a3170" stroke-width="1.5"/>
 
-  <!-- connectors (drawn first, behind cards) -->
-  <g stroke="#5b64b8" stroke-width="2" fill="none" opacity="0.8">
-    <!-- clients to gateway -->
-    <path d="M410 118 C410 150, 520 150, 520 172"/>
-    <path d="M630 118 C630 150, 520 150, 520 172"/>
-    <!-- gateway to distribution bus -->
-    <path d="M520 244 L520 300"/>
+  <!-- connectors: marching-ant dashes -->
+  <g fill="none" stroke-width="2" stroke-linecap="round">
+    <path d="M410 118 C410 150, 520 150, 520 172" stroke="#6b74c8" stroke-dasharray="5 7"><animate attributeName="stroke-dashoffset" values="24;0" dur="0.9s" repeatCount="indefinite"/></path>
+    <path d="M630 118 C630 150, 520 150, 520 172" stroke="#6b74c8" stroke-dasharray="5 7"><animate attributeName="stroke-dashoffset" values="24;0" dur="0.9s" repeatCount="indefinite"/></path>
+    <path d="M520 244 L520 300" stroke="#6b74c8" stroke-dasharray="5 7"><animate attributeName="stroke-dashoffset" values="24;0" dur="0.9s" repeatCount="indefinite"/></path>
     <path d="M70 300 L970 300" stroke="#3a4290"/>
-    <!-- bus drops to each service -->
-    <path d="M80 300 L80 356"/><path d="M228 300 L228 356"/><path d="M376 300 L376 356"/>
-    <path d="M524 300 L524 356"/><path d="M672 300 L672 356"/><path d="M820 300 L820 356"/><path d="M968 300 L968 356"/>
+    <g stroke="#5b64b8" stroke-dasharray="4 7">
+      <path d="M80 300 L80 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M228 300 L228 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M376 300 L376 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M524 300 L524 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M672 300 L672 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M820 300 L820 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+      <path d="M968 300 L968 356"><animate attributeName="stroke-dashoffset" values="22;0" dur="1s" repeatCount="indefinite"/></path>
+    </g>
   </g>
 
-  <!-- ===== helper: front-facing extruded cards ===== -->
+  <!-- traveling request packets: clients -> gateway -->
+  <g filter="url(#dot)">
+    <circle r="4.5" fill="#6ee7b7"><animateMotion path="M410 118 C410 150, 520 150, 520 172" dur="1.6s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#6ee7b7"><animateMotion path="M630 118 C630 150, 520 150, 520 172" dur="1.6s" begin="-0.8s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- traveling packets: gateway -> each service (routing) -->
+  <g filter="url(#dot)">
+    <circle r="4.5" fill="#7dd3fc"><animateMotion path="M520 240 L520 300 L80 300 L80 352" dur="2.4s" begin="0s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#7dd3fc"><animateMotion path="M520 240 L520 300 L228 300 L228 352" dur="2.4s" begin="-0.34s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#c7d2fe"><animateMotion path="M520 240 L520 300 L376 300 L376 352" dur="2.4s" begin="-0.68s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#c7d2fe"><animateMotion path="M520 240 L520 300 L524 300 L524 352" dur="2.4s" begin="-1.02s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#e9d5ff"><animateMotion path="M520 240 L520 300 L672 300 L672 352" dur="2.4s" begin="-1.36s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#e9d5ff"><animateMotion path="M520 240 L520 300 L820 300 L820 352" dur="2.4s" begin="-1.7s" repeatCount="indefinite"/></circle>
+    <circle r="4.5" fill="#fbcfe8"><animateMotion path="M520 240 L520 300 L968 300 L968 352" dur="2.4s" begin="-2.04s" repeatCount="indefinite"/></circle>
+  </g>
+
   <!-- Frontend clients -->
   <g filter="url(#ds)">
     <rect x="320" y="58" width="180" height="60" rx="12" fill="#0b8f6a"/>
@@ -49,7 +72,11 @@
   <text x="630" y="80" text-anchor="middle" font-size="15" font-weight="800" fill="#04231a">Admin</text>
   <text x="630" y="98" text-anchor="middle" font-size="12" font-weight="600" fill="#053a2b">Dashboard</text>
 
-  <!-- API Gateway -->
+  <!-- API Gateway (with live pulse ring) -->
+  <rect x="296" y="174" width="448" height="68" rx="14" fill="none" stroke="#fbbf24" stroke-width="2">
+    <animate attributeName="opacity" values="0.9;0.15;0.9" dur="2.2s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-width" values="2;4;2" dur="2.2s" repeatCount="indefinite"/>
+  </rect>
   <g filter="url(#ds)">
     <rect x="300" y="186" width="440" height="60" rx="12" fill="#b45309"/>
     <rect x="300" y="178" width="440" height="60" rx="12" fill="url(#gw)"/>
@@ -58,8 +85,7 @@
   <text x="520" y="205" text-anchor="middle" font-size="17" font-weight="900" fill="#3b1e02">Spring Cloud API Gateway</text>
   <text x="520" y="225" text-anchor="middle" font-size="13" font-weight="700" fill="#5a2f04">:8080 &#183; Routing &#183; CORS &#183; JWT Verify</text>
 
-  <!-- ===== 7 microservices (single row) ===== -->
-  <!-- Each: card + DB cylinder below. x-centers: 80 228 376 524 672 820 968 -->
+  <!-- 7 microservices -->
   <!-- 1 Auth -->
   <g filter="url(#ds)"><rect x="18" y="362" width="124" height="62" rx="11" fill="#075985"/><rect x="18" y="356" width="124" height="62" rx="11" fill="url(#c1)"/><rect x="24" y="360" width="112" height="18" rx="8" fill="url(#topsheen)"/></g>
   <text x="80" y="381" text-anchor="middle" font-size="14" font-weight="800" fill="#04212e">Auth</text>
@@ -109,6 +135,5 @@
   <g transform="translate(968,470)"><ellipse cx="0" cy="-16" rx="22" ry="7" fill="#fbcfe8"/><path d="M-22 -16 V10 a22 7 0 0 0 44 0 V-16" fill="#f472b6"/><ellipse cx="0" cy="10" rx="22" ry="7" fill="#ec4899"/><ellipse cx="0" cy="-16" rx="22" ry="7" fill="none" stroke="#ffe9f5" stroke-opacity="0.5"/></g>
   <text x="968" y="500" text-anchor="middle" font-size="10" font-weight="600" fill="#9fb0e8">notification_db</text>
 
-  <!-- caption -->
   <text x="520" y="536" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="1" fill="#7b84c0">Database&#8209;per&#8209;Service ownership &#183; independent Flyway migrations &#183; zero cross&#8209;service SQL</text>
 </svg>
